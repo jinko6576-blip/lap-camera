@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ラップカメラ">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<title>ラップカメラ</title>
+<style>
+  :root{ --rec:#ff3b30; --lap:#ffd60a; --ink:#fff; --bg:#000; --panel:rgba(0,0,0,.55); }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Helvetica Neue",sans-serif;
+    color:var(--ink);user-select:none;-webkit-user-select:none;}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000;}
+  #view{max-width:100%;max-height:100%;display:block;}
+  video#cam{display:none;}
+
+  /* 起動オーバーレイ */
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:22px;background:#0a0a0a;text-align:center;padding:24px;}
+  #start h1{font-size:22px;font-weight:700;margin:0;letter-spacing:.02em;}
+  #start p{font-size:14px;color:#b7b7b7;margin:0;line-height:1.6;max-width:300px;}
+  .bigbtn{background:#fff;color:#000;border:none;border-radius:999px;padding:16px 30px;font-size:18px;font-weight:700;}
+  .bigbtn:active{transform:scale(.97);}
+  #err{color:#ff6b6b;font-size:13px;max-width:320px;line-height:1.6;white-space:pre-line;}
+
+  /* 上部タイム */
+  #hud{position:fixed;top:0;left:0;right:0;padding:env(safe-area-inset-top) 14px 0;display:none;pointer-events:none;}
+  #hud .row{display:flex;align-items:flex-end;gap:18px;padding-top:10px;}
+  .timebox{background:var(--panel);border-radius:12px;padding:6px 14px;}
+  .timebox .lbl{font-size:11px;letter-spacing:.12em;color:#cfcfcf;font-weight:600;}
+  .timebox .val{font-variant-numeric:tabular-nums;font-weight:800;line-height:1;}
+  #totalBox .val{font-size:34px;}
+  #lapBox .val{font-size:26px;color:var(--lap);}
+  #lapNo{font-size:13px;color:#cfcfcf;margin-left:auto;align-self:flex-start;
+    background:var(--panel);border-radius:10px;padding:6px 10px;font-weight:700;}
+
+  /* 通過タイム一覧（付き添い用・動画には焼き込まない） */
+  #splits{position:fixed;left:max(12px,env(safe-area-inset-left));
+    top:calc(env(safe-area-inset-top) + 86px);width:46%;max-width:260px;
+    display:none;flex-direction:column;gap:6px;pointer-events:none;z-index:5;}
+  .sp{background:var(--panel);border-radius:10px;padding:6px 10px;display:flex;align-items:baseline;gap:8px;
+    font-variant-numeric:tabular-nums;}
+  .sp .n{background:#fff;color:#000;border-radius:6px;font-weight:800;font-size:13px;padding:1px 7px;}
+  .sp .tot{font-weight:800;font-size:20px;}
+  .sp .spl{font-size:12px;color:#cfcfcf;margin-left:auto;}
+  .sp.top{background:rgba(255,214,10,.92);color:#111;}
+  .sp.top .n{background:#111;color:#ffd60a;}
+  .sp.top .tot{font-size:30px;}
+  .sp.top .spl{color:#333;}
+
+  /* 右コントロール */
+  #ctrl{position:fixed;right:max(16px,env(safe-area-inset-right));top:50%;transform:translateY(-50%);
+    display:none;flex-direction:column;align-items:center;gap:18px;z-index:6;}
+  .rbtn{border:4px solid rgba(255,255,255,.85);background:rgba(0,0,0,.25);border-radius:999px;
+    display:flex;align-items:center;justify-content:center;}
+  #flip{width:48px;height:48px;font-size:22px;color:#fff;}
+  /* ズーム */
+  #zoom{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 14px);left:50%;transform:translateX(-50%);
+    display:none;gap:8px;z-index:6;}
+  #zoom button{background:var(--panel);color:#fff;border:2px solid rgba(255,255,255,.5);border-radius:999px;
+    min-width:54px;height:40px;font-weight:800;font-size:15px;}
+  #zoom button.on{background:var(--lap);color:#111;border-color:var(--lap);}
+  #zoom button:active{transform:scale(.92);}
+  #lapBtn{width:88px;height:88px;color:var(--lap);font-weight:800;font-size:18px;flex-direction:column;gap:2px;}
+  #lapBtn .sub{font-size:10px;font-weight:600;color:#fff;letter-spacing:.08em;}
+  #lapBtn:disabled{opacity:.35;}
+  #lapBtn:active{transform:scale(.93);background:rgba(255,214,10,.25);}
+  #recBtn{width:78px;height:78px;}
+  #recBtn .dot{width:54px;height:54px;border-radius:999px;background:var(--rec);transition:all .15s;}
+  #recBtn.on .dot{width:30px;height:30px;border-radius:8px;}
+  .rbtn:active{transform:scale(.9);}
+
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:4;}
+  #flash.go{animation:fl .35s ease-out;}
+  @keyframes fl{0%{opacity:.5;}100%{opacity:0;}}
+
+  /* 終了後 */
+  #done{position:fixed;inset:0;background:#0c0c0c;display:none;flex-direction:column;
+    padding:calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 16px);overflow:auto;gap:14px;z-index:10;}
+  #done h2{margin:0;font-size:18px;}
+  #done video{width:100%;border-radius:12px;background:#000;max-height:42vh;}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;}
+  .act{flex:1;min-width:130px;text-align:center;text-decoration:none;background:#1c1c1e;color:#fff;
+    border:1px solid #333;border-radius:12px;padding:14px;font-size:15px;font-weight:700;}
+  .act.primary{background:#fff;color:#000;border-color:#fff;}
+  .act:active{opacity:.8;}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:15px;}
+  th,td{padding:9px 8px;text-align:right;border-bottom:1px solid #262626;}
+  th:first-child,td:first-child{text-align:left;}
+  th{color:#9a9a9a;font-size:12px;letter-spacing:.06em;font-weight:600;}
+  .hint{font-size:12px;color:#8c8c8c;line-height:1.6;}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="cam" playsinline muted autoplay></video>
+  <canvas id="view"></canvas>
+</div>
+
+<div id="hud">
+  <div class="row">
+    <div class="timebox" id="totalBox"><div class="lbl">TOTAL</div><div class="val" id="totalT">0:00.0</div></div>
+    <div class="timebox" id="lapBox"><div class="lbl">LAP</div><div class="val" id="lapT">0:00.0</div></div>
+    <div id="lapNo">LAP 0</div>
+  </div>
+</div>
+
+<!-- 通過タイム一覧 -->
+<div id="splits"></div>
+
+<div id="ctrl">
+  <button id="flip" class="rbtn" title="カメラ切替">⟲</button>
+  <button id="lapBtn" class="rbtn" disabled>LAP<span class="sub">ラップ</span></button>
+  <button id="recBtn" class="rbtn"><span class="dot"></span></button>
+</div>
+
+<div id="zoom">
+  <button data-z="1" class="on">1×</button>
+  <button data-z="3">3×</button>
+  <button data-z="5">5×</button>
+</div>
+
+<div id="flash"></div>
+
+<div id="start">
+  <h1>ラップカメラ</h1>
+  <p>動画を撮りながら通過タイムを画面に表示・記録します。<br>横向き（ランドスケープ）での撮影がおすすめです。</p>
+  <button class="bigbtn" id="startBtn">カメラを起動</button>
+  <div id="err"></div>
+</div>
+
+<div id="done">
+  <h2>記録結果</h2>
+  <video id="review" controls playsinline></video>
+  <div class="actions">
+    <button class="act primary" id="saveVideo">写真に保存</button>
+    <button class="act" id="saveCsv">ラップをCSV保存</button>
+    <button class="act" id="again">もう一度撮る</button>
+  </div>
+  <table id="splitTable">
+    <thead><tr><th>ラップ</th><th>区間タイム</th><th>合計タイム</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="hint">「写真に保存」→ 共有メニューが開いたら「ビデオを保存」をタップで写真アプリに入ります。出ないときは「"ファイル"に保存」でファイルアプリへ保存できます。</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const cam = $('cam'), canvas = $('view'), ctx = canvas.getContext('2d');
+
+let stream=null, facing='environment';
+let recorder=null, chunks=[], blob=null, mime='';
+let drawing=false, recording=false;
+let t0=0, lapStart=0, laps=[];
+let wakeLock=null, videoFile=null, videoName='', videoURL='';
+let zoom=1;
+let csvFile=null, csvName='', csvURL='';
+/* 指ピンチによるページ拡大を無効化（タイム表示のズレ防止） */
+document.addEventListener('gesturestart', e=>e.preventDefault());
+document.addEventListener('dblclick', e=>e.preventDefault());
+document.querySelectorAll('#zoom button').forEach(b=>{
+  b.onclick=()=>{ zoom=parseInt(b.dataset.z,10)||1;
+    document.querySelectorAll('#zoom button').forEach(x=>x.classList.toggle('on', x===b)); };
+});
+
+/* カメラ */
+async function initCamera(){
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio:true, video:{ facingMode:facing, width:{ideal:1920}, height:{ideal:1080} }
+    });
+  }catch(e){
+    $('err').textContent='カメラを開けませんでした：'+(e.message||e)+
+      '\n※カメラを使うにはHTTPSのURLで開く必要があります。';
+    throw e;
+  }
+  cam.srcObject=stream; await cam.play().catch(()=>{});
+  await new Promise(r=>{ if(cam.videoWidth) r(); else cam.onloadedmetadata=()=>r(); });
+  canvas.width=cam.videoWidth; canvas.height=cam.videoHeight;
+  if(!drawing){ drawing=true; requestAnimationFrame(draw); }
+}
+$('startBtn').onclick=async()=>{
+  try{
+    await initCamera();
+    $('start').style.display='none';
+    $('hud').style.display='block';
+    $('ctrl').style.display='flex';
+    $('zoom').style.display='flex';
+    $('splits').style.display='flex';
+  }catch(e){}
+};
+$('flip').onclick=async()=>{ if(recording) return; facing=(facing==='environment')?'user':'environment'; await initCamera(); };
+
+/* 描画（TOTAL と 現在ラップを動画に焼き込み） */
+function fmt(ms){ if(ms<0)ms=0; const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000),d=Math.floor(ms%1000/100);
+  return (m?m+':':'0:')+String(s).padStart(2,'0')+'.'+d; }
+function draw(){
+  if(cam.videoWidth && canvas.width!==cam.videoWidth){ canvas.width=cam.videoWidth; canvas.height=cam.videoHeight; }
+  const vw=cam.videoWidth||canvas.width, vh=cam.videoHeight||canvas.height;
+  const z=zoom||1, sw=vw/z, sh=vh/z, sx=(vw-sw)/2, sy=(vh-sh)/2;
+  ctx.drawImage(cam, sx,sy,sw,sh, 0,0,canvas.width,canvas.height);
+  const now=performance.now();
+  const total=recording?now-t0:0, lap=recording?now-lapStart:0;
+  $('totalT').textContent=fmt(total); $('lapT').textContent=fmt(lap);
+
+  const H=canvas.height,W=canvas.width,pad=H*0.03,fT=H*0.075,fL=H*0.055,fS=H*0.032;
+  ctx.textBaseline='top';
+  ctx.fillStyle='rgba(0,0,0,.45)';
+  const boxW=W*0.46,boxH=fT+fS+pad*1.4; roundRect(pad,pad,boxW,boxH,H*0.02); ctx.fill();
+  ctx.textAlign='left';
+  ctx.font='800 '+fT+'px sans-serif'; ctx.fillStyle='#fff'; ctx.fillText(fmt(total),pad*1.7,pad*1.4);
+  ctx.font='700 '+fS+'px sans-serif'; ctx.fillStyle='#cfcfcf'; ctx.fillText('TOTAL',pad*1.7,pad*1.1);
+  ctx.textAlign='right'; ctx.font='800 '+fL+'px sans-serif'; ctx.fillStyle='#ffd60a';
+  ctx.fillText('LAP '+laps.length+'  '+fmt(lap),boxW,pad*1.6); ctx.textAlign='left';
+  if(recording){ ctx.beginPath(); ctx.arc(W-pad*2,pad*2,H*0.012,0,7); ctx.fillStyle='#ff3b30'; ctx.fill(); }
+  requestAnimationFrame(draw);
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+/* 録画 */
+function pickMime(){ const c=['video/mp4','video/mp4;codecs=h264','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  for(const m of c){ if(window.MediaRecorder&&MediaRecorder.isTypeSupported(m)) return m; } return ''; }
+async function startRec(){
+  chunks=[]; laps=[]; blob=null; renderSplits();
+  const cs=canvas.captureStream(30); const a=stream.getAudioTracks()[0]; if(a) cs.addTrack(a);
+  mime=pickMime();
+  try{ recorder=mime?new MediaRecorder(cs,{mimeType:mime}):new MediaRecorder(cs); }catch(e){ recorder=new MediaRecorder(cs); }
+  recorder.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
+  recorder.onstop=finishRec; recorder.start(1000);
+  t0=performance.now(); lapStart=t0; recording=true;
+  $('recBtn').classList.add('on'); $('lapBtn').disabled=false; $('lapNo').textContent='LAP 0';
+  try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch(e){}
+}
+function stopRec(){
+  const now=performance.now();
+  // 最後にラップを押した地点〜停止までを「最終ラップ」として自動記録
+  if(laps.length>=1 && (now-lapStart)>800){
+    laps.push({n:laps.length+1, split:now-lapStart, total:now-t0});
+  }
+  recording=false; $('recBtn').classList.remove('on'); $('lapBtn').disabled=true;
+  try{ recorder.stop(); }catch(e){} try{ wakeLock?.release(); wakeLock=null; }catch(e){} }
+$('recBtn').onclick=()=>{ recording?stopRec():startRec(); };
+
+/* ラップ */
+$('lapBtn').onclick=()=>{
+  if(!recording) return;
+  const now=performance.now(), split=now-lapStart, total=now-t0;
+  laps.push({n:laps.length+1,split,total}); lapStart=now;
+  $('lapNo').textContent='LAP '+laps.length;
+  renderSplits();
+  $('flash').classList.remove('go'); void $('flash').offsetWidth; $('flash').classList.add('go');
+  beep(); navigator.vibrate?.(60);
+};
+function renderSplits(){
+  const el=$('splits'); el.innerHTML='';
+  for(let i=laps.length-1;i>=0;i--){
+    const l=laps[i], d=document.createElement('div');
+    d.className='sp'+(i===laps.length-1?' top':'');
+    d.innerHTML='<span class="n">'+l.n+'</span><span class="tot">'+fmt(l.total)+'</span><span class="spl">区間 '+fmt(l.split)+'</span>';
+    el.appendChild(d);
+  }
+}
+
+/* ビープ */
+let actx=null;
+function beep(){ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+  const o=actx.createOscillator(),g=actx.createGain(); o.frequency.value=880; o.connect(g); g.connect(actx.destination);
+  g.gain.setValueAtTime(.18,actx.currentTime); g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.15);
+  o.start(); o.stop(actx.currentTime+.16); }catch(e){} }
+
+/* 終了処理 */
+function finishRec(){
+  blob=new Blob(chunks,{type:mime||'video/mp4'}); const url=URL.createObjectURL(blob);
+  $('review').src=url;
+  const ext=blob.type.includes('mp4')?'mp4':'webm';
+  const stamp=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').replace(/(\d{8})(\d{4})/,'$1_$2');
+  videoName='run_'+stamp+'.'+ext; videoURL=url;
+  try{ videoFile=new File([blob],videoName,{type:blob.type||'video/mp4'}); }catch(e){ videoFile=null; }
+  let csv='lap,split,total\n'; const tb=$('splitTable').querySelector('tbody'); tb.innerHTML='';
+  laps.forEach(l=>{ csv+=l.n+','+fmt(l.split)+','+fmt(l.total)+'\n';
+    const tr=document.createElement('tr'); tr.innerHTML='<td>LAP '+l.n+'</td><td>'+fmt(l.split)+'</td><td>'+fmt(l.total)+'</td>'; tb.appendChild(tr); });
+  const cb=new Blob([csv],{type:'text/csv'}); const sc=$('saveCsv');
+  csvName='laps_'+stamp+'.csv'; csvURL=URL.createObjectURL(cb);
+  try{ csvFile=new File([cb],csvName,{type:'text/csv'}); }catch(e){ csvFile=null; }
+  const show=laps.length>0; $('splitTable').style.display=show?'':'none'; sc.style.display=show?'':'none';
+  $('hud').style.display='none'; $('ctrl').style.display='none'; $('splits').style.display='none'; $('zoom').style.display='none'; $('done').style.display='flex';
+}
+$('saveVideo').onclick=async()=>{
+  try{
+    if(videoFile && navigator.canShare && navigator.canShare({files:[videoFile]})){
+      await navigator.share({files:[videoFile]});
+      return;
+    }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  // フォールバック：ダウンロード（写真には入らずファイル/ダウンロードへ）
+  const a=document.createElement('a'); a.href=videoURL; a.download=videoName||'run.mp4';
+  document.body.appendChild(a); a.click(); a.remove();
+};
+$('saveCsv').onclick=async()=>{
+  try{
+    if(csvFile && navigator.canShare && navigator.canShare({files:[csvFile]})){
+      await navigator.share({files:[csvFile]});
+      return;
+    }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  const a=document.createElement('a'); a.href=csvURL; a.download=csvName||'laps.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+};
+$('again').onclick=()=>{ $('done').style.display='none'; $('review').src='';
+  $('hud').style.display='block'; $('ctrl').style.display='flex'; $('splits').style.display='flex'; $('zoom').style.display='flex';
+  laps=[]; renderSplits(); $('totalT').textContent='0:00.0'; $('lapT').textContent='0:00.0'; $('lapNo').textContent='LAP 0'; };
+</script>
+</body>
+</html>
