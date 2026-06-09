@@ -137,7 +137,7 @@
   <video id="review" controls playsinline></video>
   <div class="actions">
     <button class="act primary" id="saveVideo">写真に保存</button>
-    <a class="act" id="saveCsv" download>ラップをCSV保存</a>
+    <button class="act" id="saveCsv">ラップをCSV保存</button>
     <button class="act" id="again">もう一度撮る</button>
   </div>
   <table id="splitTable">
@@ -157,6 +157,7 @@ let drawing=false, recording=false;
 let t0=0, lapStart=0, laps=[];
 let wakeLock=null, videoFile=null, videoName='', videoURL='';
 let zoom=1;
+let csvFile=null, csvName='', csvURL='';
 /* 指ピンチによるページ拡大を無効化（タイム表示のズレ防止） */
 document.addEventListener('gesturestart', e=>e.preventDefault());
 document.addEventListener('dblclick', e=>e.preventDefault());
@@ -235,7 +236,13 @@ async function startRec(){
   $('recBtn').classList.add('on'); $('lapBtn').disabled=false; $('lapNo').textContent='LAP 0';
   try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch(e){}
 }
-function stopRec(){ recording=false; $('recBtn').classList.remove('on'); $('lapBtn').disabled=true;
+function stopRec(){
+  const now=performance.now();
+  // 最後にラップを押した地点〜停止までを「最終ラップ」として自動記録
+  if(laps.length>=1 && (now-lapStart)>800){
+    laps.push({n:laps.length+1, split:now-lapStart, total:now-t0});
+  }
+  recording=false; $('recBtn').classList.remove('on'); $('lapBtn').disabled=true;
   try{ recorder.stop(); }catch(e){} try{ wakeLock?.release(); wakeLock=null; }catch(e){} }
 $('recBtn').onclick=()=>{ recording?stopRec():startRec(); };
 
@@ -277,7 +284,9 @@ function finishRec(){
   let csv='lap,split,total\n'; const tb=$('splitTable').querySelector('tbody'); tb.innerHTML='';
   laps.forEach(l=>{ csv+=l.n+','+fmt(l.split)+','+fmt(l.total)+'\n';
     const tr=document.createElement('tr'); tr.innerHTML='<td>LAP '+l.n+'</td><td>'+fmt(l.split)+'</td><td>'+fmt(l.total)+'</td>'; tb.appendChild(tr); });
-  const cb=new Blob([csv],{type:'text/csv'}); const sc=$('saveCsv'); sc.href=URL.createObjectURL(cb); sc.download='laps_'+stamp+'.csv';
+  const cb=new Blob([csv],{type:'text/csv'}); const sc=$('saveCsv');
+  csvName='laps_'+stamp+'.csv'; csvURL=URL.createObjectURL(cb);
+  try{ csvFile=new File([cb],csvName,{type:'text/csv'}); }catch(e){ csvFile=null; }
   const show=laps.length>0; $('splitTable').style.display=show?'':'none'; sc.style.display=show?'':'none';
   $('hud').style.display='none'; $('ctrl').style.display='none'; $('splits').style.display='none'; $('zoom').style.display='none'; $('done').style.display='flex';
 }
@@ -290,6 +299,16 @@ $('saveVideo').onclick=async()=>{
   }catch(e){ if(e && e.name==='AbortError') return; }
   // フォールバック：ダウンロード（写真には入らずファイル/ダウンロードへ）
   const a=document.createElement('a'); a.href=videoURL; a.download=videoName||'run.mp4';
+  document.body.appendChild(a); a.click(); a.remove();
+};
+$('saveCsv').onclick=async()=>{
+  try{
+    if(csvFile && navigator.canShare && navigator.canShare({files:[csvFile]})){
+      await navigator.share({files:[csvFile]});
+      return;
+    }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  const a=document.createElement('a'); a.href=csvURL; a.download=csvName||'laps.csv';
   document.body.appendChild(a); a.click(); a.remove();
 };
 $('again').onclick=()=>{ $('done').style.display='none'; $('review').src='';
