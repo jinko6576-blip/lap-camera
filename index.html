@@ -227,26 +227,40 @@ function draw(){
   const total=recording?now-t0:0, lap=recording?now-lapStart:0;
   $('totalT').textContent=fmt(total); $('lapT').textContent=fmt(lap);
 
-  const W=canvas.width, H=canvas.height, base=Math.min(W,H);
-  const pad=base*0.03, fLbl=base*0.028, fVal=base*0.072;
-  const lh=fVal*1.02, labelGap=fLbl*1.25, rowGap=base*0.014;
-  const innerX=base*0.024, innerY=base*0.020;
-  const totalVal=fmt(total), lapVal=fmt(lap), lapLbl='LAP '+laps.length;
-  ctx.textBaseline='top'; ctx.textAlign='left';
-  ctx.font='800 '+fVal+'px sans-serif';
-  const wVals=Math.max(ctx.measureText(totalVal).width, ctx.measureText(lapVal).width);
-  ctx.font='700 '+fLbl+'px sans-serif';
-  const wLbls=Math.max(ctx.measureText('TOTAL').width, ctx.measureText(lapLbl).width);
-  const contentW=Math.max(wVals,wLbls);
-  const boxW=contentW+innerX*2;
-  const boxH=innerY*2 + labelGap + lh + rowGap + labelGap + lh;
-  ctx.fillStyle='rgba(0,0,0,.5)'; roundRect(pad,pad,boxW,boxH,base*0.02); ctx.fill();
-  const cx=pad+innerX; let cy=pad+innerY;
-  ctx.font='700 '+fLbl+'px sans-serif'; ctx.fillStyle='#cfcfcf'; ctx.fillText('TOTAL',cx,cy); cy+=labelGap;
-  ctx.font='800 '+fVal+'px sans-serif'; ctx.fillStyle='#fff'; ctx.fillText(totalVal,cx,cy); cy+=lh+rowGap;
-  ctx.font='700 '+fLbl+'px sans-serif'; ctx.fillStyle='#ffd60a'; ctx.fillText(lapLbl,cx,cy); cy+=labelGap;
-  ctx.font='800 '+fVal+'px sans-serif'; ctx.fillStyle='#ffd60a'; ctx.fillText(lapVal,cx,cy);
-  if(recording){ ctx.beginPath(); ctx.arc(W-pad*1.6,pad*1.6,base*0.013,0,7); ctx.fillStyle='#ff3b30'; ctx.fill(); }
+  const W=canvas.width, H=canvas.height;
+  ctx.textBaseline='top';
+  if(W>=H){
+    // 横向き：元のレイアウト（TOTAL左で大きめ、LAP右）
+    const pad=H*0.03, fT=H*0.075, fL=H*0.055, fS=H*0.032;
+    ctx.fillStyle='rgba(0,0,0,.45)';
+    const boxW=W*0.46, boxH=fT+fS+pad*1.4; roundRect(pad,pad,boxW,boxH,H*0.02); ctx.fill();
+    ctx.textAlign='left';
+    ctx.font='700 '+fS+'px sans-serif'; ctx.fillStyle='#cfcfcf'; ctx.fillText('TOTAL',pad*1.7,pad*1.1);
+    ctx.font='800 '+fT+'px sans-serif'; ctx.fillStyle='#fff'; ctx.fillText(fmt(total),pad*1.7,pad*1.4);
+    ctx.textAlign='right'; ctx.font='800 '+fL+'px sans-serif'; ctx.fillStyle='#ffd60a';
+    ctx.fillText('LAP '+laps.length+'  '+fmt(lap),boxW,pad*1.6); ctx.textAlign='left';
+    if(recording){ ctx.beginPath(); ctx.arc(W-pad*2,pad*2,H*0.012,0,7); ctx.fillStyle='#ff3b30'; ctx.fill(); }
+  } else {
+    // 縦向き：縦並び（TOTAL上・LAP下）
+    const base=W, pad=base*0.03, fLbl=base*0.028, fVal=base*0.072;
+    const lh=fVal*1.02, labelGap=fLbl*1.25, rowGap=base*0.014;
+    const innerX=base*0.024, innerY=base*0.020;
+    const totalVal=fmt(total), lapVal=fmt(lap), lapLbl='LAP '+laps.length;
+    ctx.textAlign='left';
+    ctx.font='800 '+fVal+'px sans-serif';
+    const wVals=Math.max(ctx.measureText(totalVal).width, ctx.measureText(lapVal).width);
+    ctx.font='700 '+fLbl+'px sans-serif';
+    const wLbls=Math.max(ctx.measureText('TOTAL').width, ctx.measureText(lapLbl).width);
+    const boxW=Math.max(wVals,wLbls)+innerX*2;
+    const boxH=innerY*2 + labelGap + lh + rowGap + labelGap + lh;
+    ctx.fillStyle='rgba(0,0,0,.5)'; roundRect(pad,pad,boxW,boxH,base*0.02); ctx.fill();
+    const cx=pad+innerX; let cy=pad+innerY;
+    ctx.font='700 '+fLbl+'px sans-serif'; ctx.fillStyle='#cfcfcf'; ctx.fillText('TOTAL',cx,cy); cy+=labelGap;
+    ctx.font='800 '+fVal+'px sans-serif'; ctx.fillStyle='#fff'; ctx.fillText(totalVal,cx,cy); cy+=lh+rowGap;
+    ctx.font='700 '+fLbl+'px sans-serif'; ctx.fillStyle='#ffd60a'; ctx.fillText(lapLbl,cx,cy); cy+=labelGap;
+    ctx.font='800 '+fVal+'px sans-serif'; ctx.fillStyle='#ffd60a'; ctx.fillText(lapVal,cx,cy);
+    if(recording){ ctx.beginPath(); ctx.arc(W-pad*1.6,pad*1.6,base*0.013,0,7); ctx.fillStyle='#ff3b30'; ctx.fill(); }
+  }
   requestAnimationFrame(draw);
 }
 function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
