@@ -28,19 +28,20 @@
   .bigbtn:active{transform:scale(.97);}
   #err{color:#ff6b6b;font-size:13px;max-width:320px;line-height:1.6;white-space:pre-line;}
 
-  /* 上部タイム（撮影中プレビュー専用・動画には焼き込まない） */
+  /* 上部タイム */
   #hud{position:fixed;top:0;left:0;right:0;padding:env(safe-area-inset-top) 14px 0;display:none;pointer-events:none;}
-  #hud .row{display:flex;align-items:flex-start;gap:14px;padding-top:12px;}
-  .timebox{background:var(--panel);border-radius:14px;padding:9px 20px;}
-  .timebox .lbl{font-size:13px;letter-spacing:.12em;color:#cfcfcf;font-weight:600;}
-  .timebox .val{font-variant-numeric:tabular-nums;font-weight:800;line-height:1.05;}
-  #totalBox .val{font-size:50px;}
-  #lapBox .val{font-size:44px;color:var(--lap);}
-  #lapBox .lbl{color:var(--lap);}
+  #hud .row{display:flex;align-items:flex-end;gap:18px;padding-top:10px;}
+  .timebox{background:var(--panel);border-radius:12px;padding:6px 14px;}
+  .timebox .lbl{font-size:11px;letter-spacing:.12em;color:#cfcfcf;font-weight:600;}
+  .timebox .val{font-variant-numeric:tabular-nums;font-weight:800;line-height:1;}
+  #totalBox .val{font-size:34px;}
+  #lapBox .val{font-size:26px;color:var(--lap);}
+  #lapNo{font-size:13px;color:#cfcfcf;margin-left:auto;align-self:flex-start;
+    background:var(--panel);border-radius:10px;padding:6px 10px;font-weight:700;}
 
   /* 通過タイム一覧（付き添い用・動画には焼き込まない） */
   #splits{position:fixed;left:max(12px,env(safe-area-inset-left));
-    top:calc(env(safe-area-inset-top) + 96px);width:42%;max-width:210px;
+    top:calc(env(safe-area-inset-top) + 80px);width:42%;max-width:210px;
     display:none;flex-direction:column;gap:4px;z-index:5;touch-action:pan-y;
     transition:transform .22s ease, opacity .22s ease;}
   #splits.hidden{transform:translateX(-130%);opacity:0;pointer-events:none;}
@@ -107,7 +108,8 @@
 <div id="hud">
   <div class="row">
     <div class="timebox" id="totalBox"><div class="lbl">TOTAL</div><div class="val" id="totalT">0:00.0</div></div>
-    <div class="timebox" id="lapBox"><div class="lbl" id="lapLbl">LAP 0</div><div class="val" id="lapT">0:00.0</div></div>
+    <div class="timebox" id="lapBox"><div class="lbl">LAP</div><div class="val" id="lapT">0:00.0</div></div>
+    <div id="lapNo">LAP 0</div>
   </div>
 </div>
 
@@ -154,10 +156,6 @@
 const $ = id => document.getElementById(id);
 const cam = $('cam'), canvas = $('view'), ctx = canvas.getContext('2d');
 
-/* 録画専用の裏キャンバス（画面には出さない＝録画にだけ従来の焼き付けを描く） */
-const recCanvas = document.createElement('canvas');
-const rctx = recCanvas.getContext('2d');
-
 let stream=null, facing='environment';
 let recorder=null, chunks=[], blob=null, mime='';
 let drawing=false, recording=false;
@@ -203,14 +201,12 @@ async function initCamera(){
   cam.srcObject=stream; await cam.play().catch(()=>{});
   await new Promise(r=>{ if(cam.videoWidth) r(); else cam.onloadedmetadata=()=>r(); });
   canvas.width=cam.videoWidth; canvas.height=cam.videoHeight;
-  recCanvas.width=canvas.width; recCanvas.height=canvas.height;
   if(!drawing){ drawing=true; requestAnimationFrame(draw); }
 }
 $('startBtn').onclick=async()=>{
   try{
     await initCamera();
     $('start').style.display='none';
-    $('hud').style.display='block';
     $('ctrl').style.display='flex';
     $('zoom').style.display='flex';
     $('splits').style.display='flex';
@@ -219,85 +215,69 @@ $('startBtn').onclick=async()=>{
 };
 $('flip').onclick=async()=>{ if(recording) return; facing=(facing==='environment')?'user':'environment'; await initCamera(); };
 
-/* 時刻整形 */
+/* 描画（TOTAL と 現在ラップを動画に焼き込み） */
 function fmt(ms){ if(ms<0)ms=0; const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000),d=Math.floor(ms%1000/100);
   return (m?m+':':'0:')+String(s).padStart(2,'0')+'.'+d; }
+function draw(){
+  if(cam.videoWidth && canvas.width!==cam.videoWidth){ canvas.width=cam.videoWidth; canvas.height=cam.videoHeight; }
+  const vw=cam.videoWidth||canvas.width, vh=cam.videoHeight||canvas.height;
+  const z=zoom||1, sw=vw/z, sh=vh/z, sx=(vw-sw)/2, sy=(vh-sh)/2;
+  ctx.drawImage(cam, sx,sy,sw,sh, 0,0,canvas.width,canvas.height);
+  const now=performance.now();
+  const total=recording?now-t0:0, lap=recording?now-lapStart:0;
+  $('totalT').textContent=fmt(total); $('lapT').textContent=fmt(lap);
 
-/* 録画用の焼き付けオーバーレイ（=従来のまま。録画キャンバスにだけ描く） */
-function roundRectC(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y);
-  c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
-function drawOverlay(c,W,H,total,lap){
-  c.textBaseline='top';
+  const W=canvas.width, H=canvas.height;
+  ctx.textBaseline='top';
   if(W>=H){
     // 横向き：元のレイアウト（TOTAL左で大きめ、LAP右）
     const pad=H*0.03, fT=H*0.075, fL=H*0.055, fS=H*0.032;
-    c.fillStyle='rgba(0,0,0,.45)';
-    const boxW=W*0.46, boxH=fT+fS+pad*1.4; roundRectC(c,pad,pad,boxW,boxH,H*0.02); c.fill();
-    c.textAlign='left';
-    c.font='700 '+fS+'px sans-serif'; c.fillStyle='#cfcfcf'; c.fillText('TOTAL',pad*1.7,pad*1.1);
-    c.font='800 '+fT+'px sans-serif'; c.fillStyle='#fff'; c.fillText(fmt(total),pad*1.7,pad*1.4);
-    c.textAlign='right'; c.font='800 '+fL+'px sans-serif'; c.fillStyle='#ffd60a';
-    c.fillText('LAP '+laps.length+'  '+fmt(lap),boxW,pad*1.6); c.textAlign='left';
-    if(recording){ c.beginPath(); c.arc(W-pad*2,pad*2,H*0.012,0,7); c.fillStyle='#ff3b30'; c.fill(); }
+    ctx.fillStyle='rgba(0,0,0,.45)';
+    const boxW=W*0.46, boxH=fT+fS+pad*1.4; roundRect(pad,pad,boxW,boxH,H*0.02); ctx.fill();
+    ctx.textAlign='left';
+    ctx.font='700 '+fS+'px sans-serif'; ctx.fillStyle='#cfcfcf'; ctx.fillText('TOTAL',pad*1.7,pad*1.1);
+    ctx.font='800 '+fT+'px sans-serif'; ctx.fillStyle='#fff'; ctx.fillText(fmt(total),pad*1.7,pad*1.4);
+    ctx.textAlign='right'; ctx.font='800 '+fL+'px sans-serif'; ctx.fillStyle='#ffd60a';
+    ctx.fillText('LAP '+laps.length+'  '+fmt(lap),boxW,pad*1.6); ctx.textAlign='left';
+    if(recording){ ctx.beginPath(); ctx.arc(W-pad*2,pad*2,H*0.012,0,7); ctx.fillStyle='#ff3b30'; ctx.fill(); }
   } else {
     // 縦向き：縦並び（TOTAL上・LAP下）
     const base=W, pad=base*0.03, fLbl=base*0.028, fVal=base*0.072;
     const lh=fVal*1.02, labelGap=fLbl*1.25, rowGap=base*0.014;
     const innerX=base*0.024, innerY=base*0.020;
     const totalVal=fmt(total), lapVal=fmt(lap), lapLbl='LAP '+laps.length;
-    c.textAlign='left';
-    c.font='800 '+fVal+'px sans-serif';
-    const wVals=Math.max(c.measureText(totalVal).width, c.measureText(lapVal).width);
-    c.font='700 '+fLbl+'px sans-serif';
-    const wLbls=Math.max(c.measureText('TOTAL').width, c.measureText(lapLbl).width);
+    ctx.textAlign='left';
+    ctx.font='800 '+fVal+'px sans-serif';
+    const wVals=Math.max(ctx.measureText(totalVal).width, ctx.measureText(lapVal).width);
+    ctx.font='700 '+fLbl+'px sans-serif';
+    const wLbls=Math.max(ctx.measureText('TOTAL').width, ctx.measureText(lapLbl).width);
     const boxW=Math.max(wVals,wLbls)+innerX*2;
     const boxH=innerY*2 + labelGap + lh + rowGap + labelGap + lh;
-    c.fillStyle='rgba(0,0,0,.5)'; roundRectC(c,pad,pad,boxW,boxH,base*0.02); c.fill();
+    ctx.fillStyle='rgba(0,0,0,.5)'; roundRect(pad,pad,boxW,boxH,base*0.02); ctx.fill();
     const cx=pad+innerX; let cy=pad+innerY;
-    c.font='700 '+fLbl+'px sans-serif'; c.fillStyle='#cfcfcf'; c.fillText('TOTAL',cx,cy); cy+=labelGap;
-    c.font='800 '+fVal+'px sans-serif'; c.fillStyle='#fff'; c.fillText(totalVal,cx,cy); cy+=lh+rowGap;
-    c.font='700 '+fLbl+'px sans-serif'; c.fillStyle='#ffd60a'; c.fillText(lapLbl,cx,cy); cy+=labelGap;
-    c.font='800 '+fVal+'px sans-serif'; c.fillStyle='#ffd60a'; c.fillText(lapVal,cx,cy);
-    if(recording){ c.beginPath(); c.arc(W-pad*1.6,pad*1.6,base*0.013,0,7); c.fillStyle='#ff3b30'; c.fill(); }
-  }
-}
-
-/* 描画：画面表示用キャンバスには映像のみ。録画キャンバスには映像＋焼き付け。 */
-function draw(){
-  if(cam.videoWidth && canvas.width!==cam.videoWidth){
-    canvas.width=cam.videoWidth; canvas.height=cam.videoHeight;
-    recCanvas.width=canvas.width; recCanvas.height=canvas.height;
-  }
-  const vw=cam.videoWidth||canvas.width, vh=cam.videoHeight||canvas.height;
-  const z=zoom||1, sw=vw/z, sh=vh/z, sx=(vw-sw)/2, sy=(vh-sh)/2;
-  // 画面表示（焼き付けなし）
-  ctx.drawImage(cam, sx,sy,sw,sh, 0,0,canvas.width,canvas.height);
-  const now=performance.now();
-  const total=recording?now-t0:0, lap=recording?now-lapStart:0;
-  // 撮影中プレビュー（HTML・録画には入らない）
-  $('totalT').textContent=fmt(total); $('lapT').textContent=fmt(lap);
-  // 録画用：映像をコピーして従来の焼き付けを乗せる
-  if(recording){
-    rctx.drawImage(canvas, 0,0, recCanvas.width, recCanvas.height);
-    drawOverlay(rctx, recCanvas.width, recCanvas.height, total, lap);
+    ctx.font='700 '+fLbl+'px sans-serif'; ctx.fillStyle='#cfcfcf'; ctx.fillText('TOTAL',cx,cy); cy+=labelGap;
+    ctx.font='800 '+fVal+'px sans-serif'; ctx.fillStyle='#fff'; ctx.fillText(totalVal,cx,cy); cy+=lh+rowGap;
+    ctx.font='700 '+fLbl+'px sans-serif'; ctx.fillStyle='#ffd60a'; ctx.fillText(lapLbl,cx,cy); cy+=labelGap;
+    ctx.font='800 '+fVal+'px sans-serif'; ctx.fillStyle='#ffd60a'; ctx.fillText(lapVal,cx,cy);
+    if(recording){ ctx.beginPath(); ctx.arc(W-pad*1.6,pad*1.6,base*0.013,0,7); ctx.fillStyle='#ff3b30'; ctx.fill(); }
   }
   requestAnimationFrame(draw);
 }
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
 /* 録画 */
 function pickMime(){ const c=['video/mp4','video/mp4;codecs=h264','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
   for(const m of c){ if(window.MediaRecorder&&MediaRecorder.isTypeSupported(m)) return m; } return ''; }
 async function startRec(){
   chunks=[]; laps=[]; blob=null; renderSplits();
-  // 録画開始直前に1フレーム用意（先頭の空白防止）
-  rctx.drawImage(canvas, 0,0, recCanvas.width, recCanvas.height);
-  const cs=recCanvas.captureStream(30); const a=stream.getAudioTracks()[0]; if(a) cs.addTrack(a);
+  const cs=canvas.captureStream(30); const a=stream.getAudioTracks()[0]; if(a) cs.addTrack(a);
   mime=pickMime();
   try{ recorder=mime?new MediaRecorder(cs,{mimeType:mime}):new MediaRecorder(cs); }catch(e){ recorder=new MediaRecorder(cs); }
   recorder.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
   recorder.onstop=finishRec; recorder.start(1000);
   t0=performance.now(); lapStart=t0; recording=true;
-  $('recBtn').classList.add('on'); $('lapBtn').disabled=false; $('lapLbl').textContent='LAP 0';
+  $('recBtn').classList.add('on'); $('lapBtn').disabled=false; $('lapNo').textContent='LAP 0';
   try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch(e){}
 }
 function stopRec(){
@@ -315,7 +295,7 @@ $('lapBtn').onclick=()=>{
   if(!recording) return;
   const now=performance.now(), split=now-lapStart, total=now-t0;
   laps.push({n:laps.length+1,split,total}); lapStart=now;
-  $('lapLbl').textContent='LAP '+laps.length;
+  $('lapNo').textContent='LAP '+laps.length;
   renderSplits();
   $('flash').classList.remove('go'); void $('flash').offsetWidth; $('flash').classList.add('go');
   beep(); navigator.vibrate?.(60);
@@ -376,9 +356,8 @@ $('saveCsv').onclick=async()=>{
   document.body.appendChild(a); a.click(); a.remove();
 };
 $('again').onclick=()=>{ $('done').style.display='none'; $('review').src='';
-  $('hud').style.display='block';
   $('ctrl').style.display='flex'; $('splits').style.display='flex'; $('splits').classList.remove('hidden'); $('zoom').style.display='flex';
-  laps=[]; renderSplits(); $('totalT').textContent='0:00.0'; $('lapT').textContent='0:00.0'; $('lapLbl').textContent='LAP 0'; };
+  laps=[]; renderSplits(); $('totalT').textContent='0:00.0'; $('lapT').textContent='0:00.0'; $('lapNo').textContent='LAP 0'; };
 </script>
 </body>
 </html>
