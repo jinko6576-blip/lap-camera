@@ -207,7 +207,6 @@ $('startBtn').onclick=async()=>{
   try{
     await initCamera();
     $('start').style.display='none';
-    $('hud').style.display='block';
     $('ctrl').style.display='flex';
     $('zoom').style.display='flex';
     $('splits').style.display='flex';
@@ -343,7 +342,7 @@ $('saveCsv').onclick=async()=>{
   document.body.appendChild(a); a.click(); a.remove();
 };
 $('again').onclick=()=>{ $('done').style.display='none'; $('review').src='';
-  $('hud').style.display='block'; $('ctrl').style.display='flex'; $('splits').style.display='flex'; $('splits').classList.remove('hidden'); $('zoom').style.display='flex';
+  $('ctrl').style.display='flex'; $('splits').style.display='flex'; $('splits').classList.remove('hidden'); $('zoom').style.display='flex';
   laps=[]; renderSplits(); $('totalT').textContent='0:00.0'; $('lapT').textContent='0:00.0'; $('lapNo').textContent='LAP 0'; };
 </script>
 </body>
