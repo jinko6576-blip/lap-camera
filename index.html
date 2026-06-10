@@ -41,16 +41,18 @@
 
   /* 通過タイム一覧（付き添い用・動画には焼き込まない） */
   #splits{position:fixed;left:max(12px,env(safe-area-inset-left));
-    top:calc(env(safe-area-inset-top) + 86px);width:46%;max-width:260px;
-    display:none;flex-direction:column;gap:6px;pointer-events:none;z-index:5;}
-  .sp{background:var(--panel);border-radius:10px;padding:6px 10px;display:flex;align-items:baseline;gap:8px;
+    top:calc(env(safe-area-inset-top) + 80px);width:42%;max-width:210px;
+    display:none;flex-direction:column;gap:4px;z-index:5;touch-action:pan-y;
+    transition:transform .22s ease, opacity .22s ease;}
+  #splits.hidden{transform:translateX(-130%);opacity:0;pointer-events:none;}
+  .sp{background:var(--panel);border-radius:9px;padding:4px 8px;display:flex;align-items:baseline;gap:6px;
     font-variant-numeric:tabular-nums;}
-  .sp .n{background:#fff;color:#000;border-radius:6px;font-weight:800;font-size:13px;padding:1px 7px;}
-  .sp .tot{font-weight:800;font-size:20px;}
-  .sp .spl{font-size:12px;color:#cfcfcf;margin-left:auto;}
+  .sp .n{background:#fff;color:#000;border-radius:5px;font-weight:800;font-size:11px;padding:1px 6px;}
+  .sp .tot{font-weight:800;font-size:16px;}
+  .sp .spl{font-size:10px;color:#cfcfcf;margin-left:auto;}
   .sp.top{background:rgba(255,214,10,.92);color:#111;}
   .sp.top .n{background:#111;color:#ffd60a;}
-  .sp.top .tot{font-size:30px;}
+  .sp.top .tot{font-size:22px;}
   .sp.top .spl{color:#333;}
 
   /* 右コントロール */
@@ -168,6 +170,21 @@ document.querySelectorAll('#zoom button').forEach(b=>{
   b.onclick=()=>{ zoom=parseInt(b.dataset.z,10)||1;
     document.querySelectorAll('#zoom button').forEach(x=>x.classList.toggle('on', x===b)); };
 });
+/* ラップ一覧：左スワイプで隠す／右スワイプで戻す */
+(function(){
+  let sx=0, sy=0, tracking=false;
+  document.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1){ tracking=false; return; }
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY; tracking=true;
+  },{passive:true});
+  document.addEventListener('touchend',e=>{
+    if(!tracking) return; tracking=false;
+    const t=e.changedTouches[0], dx=t.clientX-sx, dy=t.clientY-sy, W=window.innerWidth;
+    if(Math.abs(dx)<50 || Math.abs(dx)<Math.abs(dy)*1.4) return;  // 横方向のはっきりしたスワイプのみ
+    if(dx<0 && sx<W*0.6) $('splits').classList.add('hidden');      // 左スワイプ→隠す
+    else if(dx>0 && sx<W*0.45) $('splits').classList.remove('hidden'); // 右スワイプ→戻す
+  },{passive:true});
+})();
 
 /* カメラ */
 async function initCamera(){
@@ -194,6 +211,7 @@ $('startBtn').onclick=async()=>{
     $('ctrl').style.display='flex';
     $('zoom').style.display='flex';
     $('splits').style.display='flex';
+    $('splits').classList.remove('hidden');
   }catch(e){}
 };
 $('flip').onclick=async()=>{ if(recording) return; facing=(facing==='environment')?'user':'environment'; await initCamera(); };
@@ -315,7 +333,7 @@ $('saveCsv').onclick=async()=>{
   document.body.appendChild(a); a.click(); a.remove();
 };
 $('again').onclick=()=>{ $('done').style.display='none'; $('review').src='';
-  $('hud').style.display='block'; $('ctrl').style.display='flex'; $('splits').style.display='flex'; $('zoom').style.display='flex';
+  $('hud').style.display='block'; $('ctrl').style.display='flex'; $('splits').style.display='flex'; $('splits').classList.remove('hidden'); $('zoom').style.display='flex';
   laps=[]; renderSplits(); $('totalT').textContent='0:00.0'; $('lapT').textContent='0:00.0'; $('lapNo').textContent='LAP 0'; };
 </script>
 </body>
