@@ -230,15 +230,27 @@ function draw(){
   const W=canvas.width, H=canvas.height;
   ctx.textBaseline='top';
   if(W>=H){
-    // 横向き：元のレイアウト（TOTAL左で大きめ、LAP右）
-    const pad=H*0.03, fT=H*0.075, fL=H*0.055, fS=H*0.032;
-    ctx.fillStyle='rgba(0,0,0,.45)';
-    const boxW=W*0.46, boxH=fT+fS+pad*1.4; roundRect(pad,pad,boxW,boxH,H*0.02); ctx.fill();
+    // 横向き：TOTALとLAPを別々の座布団に分ける（数字は少し大きめ）
+    const pad=H*0.03, fLbl=H*0.034, fT=H*0.088, fL=H*0.070;
+    const innerX=H*0.024, innerY=H*0.016, gap=H*0.02, rowGap=H*0.006, rad=H*0.02;
+    const bg='rgba(0,0,0,.5)';
     ctx.textAlign='left';
-    ctx.font='700 '+fS+'px sans-serif'; ctx.fillStyle='#cfcfcf'; ctx.fillText('TOTAL',pad*1.7,pad*1.1);
-    ctx.font='800 '+fT+'px sans-serif'; ctx.fillStyle='#fff'; ctx.fillText(fmt(total),pad*1.7,pad*1.4);
-    ctx.textAlign='right'; ctx.font='800 '+fL+'px sans-serif'; ctx.fillStyle='#ffd60a';
-    ctx.fillText('LAP '+laps.length+'  '+fmt(lap),boxW,pad*1.6); ctx.textAlign='left';
+    // TOTAL の座布団
+    const tLbl='TOTAL', tVal=fmt(total);
+    ctx.font='700 '+fLbl+'px sans-serif'; const tLblW=ctx.measureText(tLbl).width;
+    ctx.font='800 '+fT+'px sans-serif'; const tValW=ctx.measureText(tVal).width;
+    const tW=Math.max(tLblW,tValW)+innerX*2, tH=innerY*2+fLbl+rowGap+fT;
+    ctx.fillStyle=bg; roundRect(pad,pad,tW,tH,rad); ctx.fill();
+    ctx.font='700 '+fLbl+'px sans-serif'; ctx.fillStyle='#cfcfcf'; ctx.fillText(tLbl,pad+innerX,pad+innerY);
+    ctx.font='800 '+fT+'px sans-serif'; ctx.fillStyle='#fff'; ctx.fillText(tVal,pad+innerX,pad+innerY+fLbl+rowGap);
+    // LAP の座布団
+    const lLbl='LAP '+laps.length, lVal=fmt(lap), lX=pad+tW+gap;
+    ctx.font='700 '+fLbl+'px sans-serif'; const lLblW=ctx.measureText(lLbl).width;
+    ctx.font='800 '+fL+'px sans-serif'; const lValW=ctx.measureText(lVal).width;
+    const lW=Math.max(lLblW,lValW)+innerX*2, lH=innerY*2+fLbl+rowGap+fL;
+    ctx.fillStyle=bg; roundRect(lX,pad,lW,lH,rad); ctx.fill();
+    ctx.font='700 '+fLbl+'px sans-serif'; ctx.fillStyle='#ffd60a'; ctx.fillText(lLbl,lX+innerX,pad+innerY);
+    ctx.font='800 '+fL+'px sans-serif'; ctx.fillStyle='#ffd60a'; ctx.fillText(lVal,lX+innerX,pad+innerY+fLbl+rowGap);
     if(recording){ ctx.beginPath(); ctx.arc(W-pad*2,pad*2,H*0.012,0,7); ctx.fillStyle='#ff3b30'; ctx.fill(); }
   } else {
     // 縦向き：縦並び（TOTAL上・LAP下）
