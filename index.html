@@ -107,8 +107,8 @@
 
 <div id="hud">
   <div class="row">
-    <div class="timebox" id="totalBox"><div class="lbl">TOTAL</div><div class="val" id="totalT">0:00.0</div></div>
-    <div class="timebox" id="lapBox"><div class="lbl">LAP</div><div class="val" id="lapT">0:00.0</div></div>
+    <div class="timebox" id="totalBox"><div class="lbl">TOTAL</div><div class="val" id="totalT">0:00:00</div></div>
+    <div class="timebox" id="lapBox"><div class="lbl">LAP</div><div class="val" id="lapT">0:00:00</div></div>
     <div id="lapNo">LAP 0</div>
   </div>
 </div>
@@ -216,8 +216,8 @@ $('startBtn').onclick=async()=>{
 $('flip').onclick=async()=>{ if(recording) return; facing=(facing==='environment')?'user':'environment'; await initCamera(); };
 
 /* 描画（TOTAL と 現在ラップを動画に焼き込み） */
-function fmt(ms){ if(ms<0)ms=0; const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000),d=Math.floor(ms%1000/100);
-  return (m?m+':':'0:')+String(s).padStart(2,'0')+'.'+d; }
+function fmt(ms){ if(ms<0)ms=0; const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000),c=Math.floor(ms%1000/10);
+  return m+':'+String(s).padStart(2,'0')+':'+String(c).padStart(2,'0'); }
 function draw(){
   if(cam.videoWidth && canvas.width!==cam.videoWidth){ canvas.width=cam.videoWidth; canvas.height=cam.videoHeight; }
   const vw=cam.videoWidth||canvas.width, vh=cam.videoHeight||canvas.height;
@@ -369,7 +369,7 @@ $('saveCsv').onclick=async()=>{
 };
 $('again').onclick=()=>{ $('done').style.display='none'; $('review').src='';
   $('ctrl').style.display='flex'; $('splits').style.display='flex'; $('splits').classList.remove('hidden'); $('zoom').style.display='flex';
-  laps=[]; renderSplits(); $('totalT').textContent='0:00.0'; $('lapT').textContent='0:00.0'; $('lapNo').textContent='LAP 0'; };
+  laps=[]; renderSplits(); $('totalT').textContent='0:00:00'; $('lapT').textContent='0:00:00'; $('lapNo').textContent='LAP 0'; };
 </script>
 </body>
 </html>
